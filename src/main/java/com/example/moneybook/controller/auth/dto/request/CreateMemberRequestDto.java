@@ -12,9 +12,9 @@ public class CreateMemberRequestDto {
     @NotNull
     private String memberName;
 
-    @NotNull
-    private String password;
-
     @Email
     private String email;
+
+    @NotNull
+    private String password;
 }
