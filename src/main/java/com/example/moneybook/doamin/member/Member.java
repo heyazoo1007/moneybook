@@ -1,11 +1,9 @@
 package com.example.moneybook.doamin.member;
 
+import com.example.moneybook.doamin.MemberRole;
 import lombok.*;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.time.LocalDateTime;
 
 @NoArgsConstructor
@@ -15,15 +13,19 @@ import java.time.LocalDateTime;
 @Getter
 @Entity
 public class Member {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private long id;
+    private Long id;
+
+    private String email;
 
     private String memberName;
 
     private String password;
 
-    private String email;
+    @Enumerated(EnumType.STRING)
+    private MemberRole role;
 
     private LocalDateTime createdAt;
 

@@ -1,21 +1,28 @@
 package com.example.moneybook.service.auth;
 
+import com.example.moneybook.common.config.security.JwtTokenProvider;
+import com.example.moneybook.common.config.security.dto.TokenResponseDto;
 import com.example.moneybook.common.exception.model.ConflictException;
 import com.example.moneybook.common.exception.model.InternalServerException;
 import com.example.moneybook.common.exception.model.ValidationException;
 import com.example.moneybook.common.util.RedisUtil;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
+import com.example.moneybook.doamin.MemberRole;
 import com.example.moneybook.doamin.member.Member;
 import com.example.moneybook.doamin.member.MemberRepository;
 import com.example.moneybook.controller.auth.dto.request.CreateMemberRequestDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
+import javax.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.Random;
 
@@ -25,6 +32,8 @@ import static com.example.moneybook.common.exception.ErrorCode.*;
 @RequiredArgsConstructor
 public class AuthService {
     private final MemberRepository memberRepository;
+    private final AuthenticationManagerBuilder authenticationManagerBuilder;
+    private final JwtTokenProvider jwtTokenProvider;
     private final JavaMailSender javaMailSender;
     private final RedisUtil redisUtil;
 
@@ -45,7 +54,7 @@ public class AuthService {
 
         String authKey = getAuthKey();
 
-        String subject = "제목";
+        String subject = "짠짠이 가입을 위한 인증 이메일입니다.";
         String text = "회원가입을 위한 인증번호는 " + authKey + "입니다.<br/>";
 
         try {
@@ -66,6 +75,7 @@ public class AuthService {
     public void completeAuthEmail(CompleteAuthEmailRequestDto request) {
 
         String email = redisUtil.getData(request.getAuthKey());
+        // 인증 이메일 전송 2번하는 경우에 대한 예외처리해야함
 
         try {
             if (!email.equals(request.getEmail())) { // 인증키로 가져온 이메일과 입력한 이메일이 다른 경우
@@ -97,8 +107,28 @@ public class AuthService {
                 .memberName(request.getMemberName())
                 .password(request.getPassword())
                 .email(request.getEmail())
+                .role(MemberRole.ROLE_MEMBER)
                 .createdAt(LocalDateTime.now())
                 .build());
+    }
+
+    @Transactional
+    public TokenResponseDto signIn(String email, String password) {
+
+        // 1. Login id/pw를 기반으로 Authentication 객체 생성
+        // 이때 authentication 는 인증 여부를 확인하는 authenticated 값이 false
+        UsernamePasswordAuthenticationToken authenticationToken =
+                new UsernamePasswordAuthenticationToken(email, password);
+
+         // 2. 실제 검증 (사용자 비밀번호 체크)이 이뤄지는 부분
+         // authenticate 메서드가 실행될 때 CustomUserDetailsService 에서 만든
+         // loadUserByUsername 메서드가 실행
+        Authentication authentication =
+                authenticationManagerBuilder.getObject().authenticate(authenticationToken);
+
+        TokenResponseDto tokenResponseDto = jwtTokenProvider.generateToken(authentication);
+
+        return tokenResponseDto;
     }
 
     private String getAuthKey() {

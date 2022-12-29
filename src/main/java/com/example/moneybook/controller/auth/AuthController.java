@@ -1,5 +1,8 @@
 package com.example.moneybook.controller.auth;
 
+import com.example.moneybook.common.config.security.dto.TokenResponseDto;
+import com.example.moneybook.common.dto.ApiResponse;
+import com.example.moneybook.controller.auth.dto.MemberLoginRequestDto;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.ValidateEmailRequestDto;
@@ -20,22 +23,32 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/email/validate")
-    public void validateEmail(@Valid @RequestBody ValidateEmailRequestDto request) {
+    public ApiResponse<String> validateEmail(@Valid @RequestBody ValidateEmailRequestDto request) {
         authService.validateEmail(request.getEmail());
+        return ApiResponse.SUCCESS;
     }
 
     @PostMapping("/email/send")
-    public void sendAuthEmail(@Valid @RequestBody SendAuthEmailRequestDto request) {
+    public ApiResponse<String> sendAuthEmail(@Valid @RequestBody SendAuthEmailRequestDto request) {
         authService.sendAuthEmail(request);
+        return ApiResponse.SUCCESS;
     }
 
     @PostMapping("/email/complete")
-    public void completeAuthEmail(@Valid @RequestBody CompleteAuthEmailRequestDto request) {
+    public ApiResponse<String> completeAuthEmail(@Valid @RequestBody CompleteAuthEmailRequestDto request) {
         authService.completeAuthEmail(request);
+        return ApiResponse.SUCCESS;
     }
 
     @PostMapping("/signup")
-    public void createMember(@Valid @RequestBody CreateMemberRequestDto request) {
+    public ApiResponse<String> createMember(@Valid @RequestBody CreateMemberRequestDto request) {
         authService.createMember(request);
+        return ApiResponse.SUCCESS;
+    }
+
+    @PostMapping("/signin") // endpoint에는 소문자만 사용가능
+    public ApiResponse<TokenResponseDto> signIn(@Valid @RequestBody MemberLoginRequestDto request) {
+        TokenResponseDto response = authService.signIn(request.getEmail(), request.getPassword());
+        return ApiResponse.success(response);
     }
 }
