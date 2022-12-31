@@ -1,4 +1,4 @@
-package com.example.moneybook.controller.auth.dto;
+package com.example.moneybook.controller.auth.dto.request;
 
 import lombok.Getter;
 
