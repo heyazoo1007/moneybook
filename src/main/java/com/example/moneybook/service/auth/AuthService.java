@@ -2,12 +2,15 @@ package com.example.moneybook.service.auth;
 
 import com.example.moneybook.common.config.security.JwtTokenProvider;
 import com.example.moneybook.common.config.security.dto.TokenResponseDto;
+import com.example.moneybook.common.exception.ErrorCode;
 import com.example.moneybook.common.exception.model.ConflictException;
 import com.example.moneybook.common.exception.model.InternalServerException;
+import com.example.moneybook.common.exception.model.NotFoundException;
 import com.example.moneybook.common.exception.model.ValidationException;
 import com.example.moneybook.common.util.RedisUtil;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
+import com.example.moneybook.controller.auth.dto.response.CreateMemberResponseDto;
 import com.example.moneybook.doamin.MemberRole;
 import com.example.moneybook.doamin.member.Member;
 import com.example.moneybook.doamin.member.MemberRepository;
@@ -37,7 +40,7 @@ public class AuthService {
     private final JavaMailSender javaMailSender;
     private final RedisUtil redisUtil;
 
-    public void validateEmail(String email) {
+    public boolean validateEmail(String email) {
 
         if (memberRepository.findByEmail(email).isPresent()) {
             throw new ConflictException(
@@ -45,6 +48,8 @@ public class AuthService {
                     CONFLICT_USER_EXCEPTION
             );
         }
+
+        return true;
     }
 
     public void sendAuthEmail(SendAuthEmailRequestDto request) {
@@ -88,32 +93,42 @@ public class AuthService {
         redisUtil.setDataExpire(email, "이메일 인증 완료", 60 * 60 * 24L);
     }
 
-    public void createMember(CreateMemberRequestDto request) {
+    public Member getMemberByEmail(String email) {
+        return memberRepository.findByEmail(email).orElseThrow();
+    }
+
+    public CreateMemberResponseDto createMember(CreateMemberRequestDto request) {
         String email = request.getEmail();
 
         validateEmail(email);
 
         // 인증 신청하지 않은 이메일인 경우
         if(redisUtil.getData(email).isEmpty()) {
-            throw new ValidationException("이메일 인증 완료 후 회원가입 할 수 있습니다.", UNAUTHORIZED_EMAIL_EXCEPTION);
+            throw new ValidationException(
+                    "이메일 인증 완료 후 회원가입 할 수 있습니다.",
+                    UNAUTHORIZED_EMAIL_EXCEPTION
+            );
         }
 
         // 이메일 인증 신청했지만, 인증키를 입력하지 않은 경우
         if (redisUtil.getData(email).equals("이메일 인증 신청")) {
-            throw new ValidationException("인증키를 입력 해주세요.", UNAUTHORIZED_AUTH_KEY_EXCEPTION);
+            throw new ValidationException(
+                    "인증키를 입력 해주세요.",
+                    UNAUTHORIZED_AUTH_KEY_EXCEPTION
+            );
         }
 
-        memberRepository.save(Member.builder()
+        return CreateMemberResponseDto.of(memberRepository.save(Member.builder()
                 .memberName(request.getMemberName())
-                .password(request.getPassword())
                 .email(request.getEmail())
+                .password(request.getPassword())
                 .role(MemberRole.ROLE_MEMBER)
                 .createdAt(LocalDateTime.now())
-                .build());
+                .build()));
     }
 
     @Transactional
-    public TokenResponseDto signIn(String email, String password) {
+    public String signIn(String email, String password) {
 
         // 1. Login id/pw를 기반으로 Authentication 객체 생성
         // 이때 authentication 는 인증 여부를 확인하는 authenticated 값이 false
@@ -126,9 +141,10 @@ public class AuthService {
         Authentication authentication =
                 authenticationManagerBuilder.getObject().authenticate(authenticationToken);
 
+
         TokenResponseDto tokenResponseDto = jwtTokenProvider.generateToken(authentication);
 
-        return tokenResponseDto;
+        return tokenResponseDto.getAccessToken();
     }
 
     private String getAuthKey() {
