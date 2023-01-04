@@ -31,7 +31,8 @@ import static com.example.moneybook.common.exception.ErrorCode.*;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-    public static final long AuthEmailWillExpireIn = 60 * 60 * 24L;
+    public static final long AuthEmailRequestWillExpireIn = 60 * 60 * 24L;
+    public static final long AuthKeyExpiration = 60 * 3L;
     private final MemberRepository memberRepository;
     private final AuthenticationManagerBuilder authenticationManagerBuilder;
     private final JwtTokenProvider jwtTokenProvider;
@@ -71,8 +72,8 @@ public class AuthService {
         } catch (MessagingException e) {
             throw new InternalServerException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email));
         }
-        redisRepository.setDataExpire(authKey, email, 60 * 3L);
-        redisRepository.setDataExpire(email, "이메일 인증 신청", 60 * 60 * 24L);
+        redisRepository.setDataExpire(authKey, email, AuthKeyExpiration);
+        redisRepository.setDataExpire(email, "이메일 인증 신청", AuthEmailRequestWillExpireIn);
     }
 
     public void completeAuthEmail(CompleteAuthEmailRequestDto request) {
@@ -88,7 +89,7 @@ public class AuthService {
             throw new ValidationException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
         }
         // 인증 완료 후 하루안에 회원가입해야함
-        redisRepository.setDataExpire("EMAIL-AUTH:${" + email + "}", "이메일 인증 완료", AuthEmailWillExpireIn);
+        redisRepository.setDataExpire("EMAIL-AUTH:${" + email + "}", "이메일 인증 완료", AuthEmailRequestWillExpireIn);
     }
 
     public Member getMemberByEmail(String email) {
