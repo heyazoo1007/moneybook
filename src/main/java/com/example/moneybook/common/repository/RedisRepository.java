@@ -1,4 +1,4 @@
-package com.example.moneybook.common.util;
+package com.example.moneybook.common.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -9,7 +9,7 @@ import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
-public class RedisUtil {
+public class RedisRepository {
 
     private final StringRedisTemplate stringRedisTemplate;
 
