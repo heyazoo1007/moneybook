@@ -2,12 +2,8 @@ package com.example.moneybook.service.auth;
 
 import com.example.moneybook.common.config.security.JwtTokenProvider;
 import com.example.moneybook.common.config.security.dto.TokenResponseDto;
-import com.example.moneybook.common.exception.ErrorCode;
-import com.example.moneybook.common.exception.model.ConflictException;
-import com.example.moneybook.common.exception.model.InternalServerException;
-import com.example.moneybook.common.exception.model.NotFoundException;
-import com.example.moneybook.common.exception.model.ValidationException;
-import com.example.moneybook.common.util.RedisUtil;
+import com.example.moneybook.common.exception.model.*;
+import com.example.moneybook.common.repository.RedisRepository;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.response.CreateMemberResponseDto;
@@ -27,6 +23,7 @@ import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
 import javax.transaction.Transactional;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.Random;
 
 import static com.example.moneybook.common.exception.ErrorCode.*;
@@ -34,11 +31,12 @@ import static com.example.moneybook.common.exception.ErrorCode.*;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+    public static final long AuthEmailWillExpireIn = 60 * 60 * 24L;
     private final MemberRepository memberRepository;
     private final AuthenticationManagerBuilder authenticationManagerBuilder;
     private final JwtTokenProvider jwtTokenProvider;
     private final JavaMailSender javaMailSender;
-    private final RedisUtil redisUtil;
+    private final RedisRepository redisRepository;
 
     public boolean validateEmail(String email) {
 
@@ -73,13 +71,13 @@ public class AuthService {
         } catch (MessagingException e) {
             throw new InternalServerException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email));
         }
-        redisUtil.setDataExpire(authKey, email, 60 * 3L);
-        redisUtil.setDataExpire(email, "이메일 인증 신청", 60 * 60 * 24L);
+        redisRepository.setDataExpire(authKey, email, 60 * 3L);
+        redisRepository.setDataExpire(email, "이메일 인증 신청", 60 * 60 * 24L);
     }
 
     public void completeAuthEmail(CompleteAuthEmailRequestDto request) {
 
-        String email = redisUtil.getData(request.getAuthKey());
+        String email = redisRepository.getData(request.getAuthKey());
         // 인증 이메일 전송 2번하는 경우에 대한 예외처리해야함
 
         try {
@@ -90,11 +88,16 @@ public class AuthService {
             throw new ValidationException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
         }
         // 인증 완료 후 하루안에 회원가입해야함
-        redisUtil.setDataExpire(email, "이메일 인증 완료", 60 * 60 * 24L);
+        redisRepository.setDataExpire("EMAIL-AUTH:${" + email + "}", "이메일 인증 완료", AuthEmailWillExpireIn);
     }
 
     public Member getMemberByEmail(String email) {
-        return memberRepository.findByEmail(email).orElseThrow();
+        Optional<Member> optionalMember = memberRepository.findByEmail(email);
+        if (optionalMember.isEmpty()) {
+            throw new NotFoundException("이메일에 해당하는 사용자가 없습니다.", NOT_FOUND_USER_EXCEPTION);
+        }
+
+        return optionalMember.get();
     }
 
     public CreateMemberResponseDto createMember(CreateMemberRequestDto request) {
@@ -103,7 +106,7 @@ public class AuthService {
         validateEmail(email);
 
         // 인증 신청하지 않은 이메일인 경우
-        if(redisUtil.getData(email).isEmpty()) {
+        if(redisRepository.getData(email).isEmpty()) {
             throw new ValidationException(
                     "이메일 인증 완료 후 회원가입 할 수 있습니다.",
                     UNAUTHORIZED_EMAIL_EXCEPTION
@@ -111,7 +114,7 @@ public class AuthService {
         }
 
         // 이메일 인증 신청했지만, 인증키를 입력하지 않은 경우
-        if (redisUtil.getData(email).equals("이메일 인증 신청")) {
+        if (redisRepository.getData(email).equals("이메일 인증 신청")) {
             throw new ValidationException(
                     "인증키를 입력 해주세요.",
                     UNAUTHORIZED_AUTH_KEY_EXCEPTION
@@ -153,7 +156,7 @@ public class AuthService {
         do {
             Random random = new Random();
             authKey = String.valueOf(random.nextInt(999999));
-        } while (redisUtil.existKey(authKey));
+        } while (redisRepository.existKey(authKey));
 
         return authKey;
     }
