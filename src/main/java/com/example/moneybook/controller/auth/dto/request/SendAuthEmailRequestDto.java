@@ -6,6 +6,7 @@ import javax.validation.constraints.Email;
 
 @Getter
 public class SendAuthEmailRequestDto {
+
     @Email
     private String email;
 }

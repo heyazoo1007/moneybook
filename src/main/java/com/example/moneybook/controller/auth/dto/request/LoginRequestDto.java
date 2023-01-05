@@ -7,11 +7,13 @@ import lombok.NoArgsConstructor;
 
 import javax.validation.constraints.Email;
 
-@Builder
 @Getter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ValidateEmailRequestDto {
+public class LoginRequestDto {
+
     @Email
     private String email;
+    private String password;
 }

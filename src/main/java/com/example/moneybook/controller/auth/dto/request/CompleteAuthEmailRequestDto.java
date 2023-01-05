@@ -7,6 +7,7 @@ import javax.validation.constraints.NotNull;
 
 @Getter
 public class CompleteAuthEmailRequestDto {
+
     @Email
     private String email;
     @NotNull

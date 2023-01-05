@@ -8,4 +8,8 @@ public class ConflictException extends MoneyBookException {
     public ConflictException(String message, ErrorCode errorCode) {
         super(message, errorCode);
     }
+
+    public ConflictException(ErrorCode errorCode) {
+        super(errorCode.getMessage(), errorCode);
+    }
 }

@@ -2,12 +2,12 @@ package com.example.moneybook.service.auth;
 
 import com.example.moneybook.common.config.security.JwtTokenProvider;
 import com.example.moneybook.common.config.security.dto.TokenResponseDto;
-import com.example.moneybook.common.exception.model.ConflictException;
-import com.example.moneybook.common.exception.model.InternalServerException;
-import com.example.moneybook.common.exception.model.ValidationException;
-import com.example.moneybook.common.util.RedisUtil;
+import com.example.moneybook.common.exception.model.*;
+import com.example.moneybook.common.repository.RedisRepository;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
+import com.example.moneybook.controller.auth.dto.response.CreateMemberResponseDto;
+import com.example.moneybook.controller.auth.dto.response.ValidateEmailResponseDto;
 import com.example.moneybook.doamin.MemberRole;
 import com.example.moneybook.doamin.member.Member;
 import com.example.moneybook.doamin.member.MemberRepository;
@@ -24,6 +24,7 @@ import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
 import javax.transaction.Transactional;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.Random;
 
 import static com.example.moneybook.common.exception.ErrorCode.*;
@@ -31,23 +32,30 @@ import static com.example.moneybook.common.exception.ErrorCode.*;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+    public static final long AuthEmailRequestWillExpireIn = 60 * 60 * 24L;
+    public static final long AuthKeyExpiration = 60 * 3L;
     private final MemberRepository memberRepository;
     private final AuthenticationManagerBuilder authenticationManagerBuilder;
     private final JwtTokenProvider jwtTokenProvider;
     private final JavaMailSender javaMailSender;
-    private final RedisUtil redisUtil;
+    private final RedisRepository redisRepository;
 
-    public void validateEmail(String email) {
+    public ValidateEmailResponseDto validateEmail(String email) {
 
         if (memberRepository.findByEmail(email).isPresent()) {
-            throw new ConflictException(
+            throw new MoneyBookException(
                     String.format("이미 가입된 유저의 이메일 (%s) 입니다.", email),
                     CONFLICT_USER_EXCEPTION
             );
         }
+
+        return ValidateEmailResponseDto.builder()
+                .email(email)
+                .build();
     }
 
     public void sendAuthEmail(SendAuthEmailRequestDto request) {
+
         String email = request.getEmail();
 
         validateEmail(email);
@@ -66,54 +74,76 @@ public class AuthService {
             javaMailSender.send(mimeMessage);
 
         } catch (MessagingException e) {
-            throw new InternalServerException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email));
+            throw new MoneyBookException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email), INTERNAL_SERVER_EXCEPTION);
         }
-        redisUtil.setDataExpire(authKey, email, 60 * 3L);
-        redisUtil.setDataExpire(email, "이메일 인증 신청", 60 * 60 * 24L);
+        redisRepository.setDataExpire(authKey, email, AuthKeyExpiration);
+        redisRepository.setDataExpire(email, "이메일 인증 신청", AuthEmailRequestWillExpireIn);
     }
 
     public void completeAuthEmail(CompleteAuthEmailRequestDto request) {
 
-        String email = redisUtil.getData(request.getAuthKey());
+        String email = redisRepository.getData(request.getAuthKey());
+
+        validateEmail(email);
+
         // 인증 이메일 전송 2번하는 경우에 대한 예외처리해야함
 
         try {
             if (!email.equals(request.getEmail())) { // 인증키로 가져온 이메일과 입력한 이메일이 다른 경우
-                throw new ValidationException("잘못된 이메일 입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
+                throw new MoneyBookException("잘못된 이메일 입니다.", VALIDATION_WRONG_EMAIL_PASSWORD_EXCEPTION);
             }
         } catch (NullPointerException e) { // 이메일에 해당하는 인증키가 없음
-            throw new ValidationException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
+            throw new MoneyBookException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
         }
         // 인증 완료 후 하루안에 회원가입해야함
-        redisUtil.setDataExpire(email, "이메일 인증 완료", 60 * 60 * 24L);
+        redisRepository.setDataExpire("EMAIL-AUTH:${" + email + "}", "이메일 인증 완료", AuthEmailRequestWillExpireIn);
     }
 
-    public void createMember(CreateMemberRequestDto request) {
+    public Member getMemberByEmail(String email) {
+
+        validateEmail(email);
+
+        Optional<Member> optionalMember = memberRepository.findByEmail(email);
+        if (optionalMember.isEmpty()) {
+            throw new MoneyBookException("이메일에 해당하는 사용자가 없습니다.", NOT_FOUND_USER_EXCEPTION);
+        }
+
+        return optionalMember.get();
+    }
+
+    public CreateMemberResponseDto createMember(CreateMemberRequestDto request) {
+
         String email = request.getEmail();
 
         validateEmail(email);
 
         // 인증 신청하지 않은 이메일인 경우
-        if(redisUtil.getData(email).isEmpty()) {
-            throw new ValidationException("이메일 인증 완료 후 회원가입 할 수 있습니다.", UNAUTHORIZED_EMAIL_EXCEPTION);
+        if(redisRepository.getData(email) == null) {
+            throw new MoneyBookException(
+                    "이메일 인증 완료 후 회원가입 할 수 있습니다.",
+                    UNAUTHORIZED_EMAIL_EXCEPTION
+            );
         }
 
         // 이메일 인증 신청했지만, 인증키를 입력하지 않은 경우
-        if (redisUtil.getData(email).equals("이메일 인증 신청")) {
-            throw new ValidationException("인증키를 입력 해주세요.", UNAUTHORIZED_AUTH_KEY_EXCEPTION);
+        if (redisRepository.getData(email).equals("이메일 인증 신청")) {
+            throw new MoneyBookException(
+                    "인증키를 입력 해주세요.",
+                    UNAUTHORIZED_AUTH_KEY_EXCEPTION
+            );
         }
 
-        memberRepository.save(Member.builder()
+        return CreateMemberResponseDto.of(memberRepository.save(Member.builder()
                 .memberName(request.getMemberName())
-                .password(request.getPassword())
                 .email(request.getEmail())
+                .password(request.getPassword())
                 .role(MemberRole.ROLE_MEMBER)
                 .createdAt(LocalDateTime.now())
-                .build());
+                .build()));
     }
 
     @Transactional
-    public TokenResponseDto signIn(String email, String password) {
+    public String signIn(String email, String password) {
 
         // 1. Login id/pw를 기반으로 Authentication 객체 생성
         // 이때 authentication 는 인증 여부를 확인하는 authenticated 값이 false
@@ -126,9 +156,10 @@ public class AuthService {
         Authentication authentication =
                 authenticationManagerBuilder.getObject().authenticate(authenticationToken);
 
+
         TokenResponseDto tokenResponseDto = jwtTokenProvider.generateToken(authentication);
 
-        return tokenResponseDto;
+        return tokenResponseDto.getAccessToken();
     }
 
     private String getAuthKey() {
@@ -137,7 +168,7 @@ public class AuthService {
         do {
             Random random = new Random();
             authKey = String.valueOf(random.nextInt(999999));
-        } while (redisUtil.existKey(authKey));
+        } while (redisRepository.existKey(authKey));
 
         return authKey;
     }
