@@ -10,6 +10,7 @@ import javax.validation.constraints.NotNull;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateMemberRequestDto {
+
     @NotNull
     private String memberName;
 

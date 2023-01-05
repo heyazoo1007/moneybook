@@ -7,6 +7,7 @@ import com.example.moneybook.common.repository.RedisRepository;
 import com.example.moneybook.controller.auth.dto.request.CompleteAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.request.SendAuthEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.response.CreateMemberResponseDto;
+import com.example.moneybook.controller.auth.dto.response.ValidateEmailResponseDto;
 import com.example.moneybook.doamin.MemberRole;
 import com.example.moneybook.doamin.member.Member;
 import com.example.moneybook.doamin.member.MemberRepository;
@@ -39,19 +40,22 @@ public class AuthService {
     private final JavaMailSender javaMailSender;
     private final RedisRepository redisRepository;
 
-    public boolean validateEmail(String email) {
+    public ValidateEmailResponseDto validateEmail(String email) {
 
         if (memberRepository.findByEmail(email).isPresent()) {
-            throw new ConflictException(
+            throw new MoneyBookException(
                     String.format("이미 가입된 유저의 이메일 (%s) 입니다.", email),
                     CONFLICT_USER_EXCEPTION
             );
         }
 
-        return true;
+        return ValidateEmailResponseDto.builder()
+                .email(email)
+                .build();
     }
 
     public void sendAuthEmail(SendAuthEmailRequestDto request) {
+
         String email = request.getEmail();
 
         validateEmail(email);
@@ -70,7 +74,7 @@ public class AuthService {
             javaMailSender.send(mimeMessage);
 
         } catch (MessagingException e) {
-            throw new InternalServerException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email));
+            throw new MoneyBookException(String.format("(%s) 이메일에 대한 인증 메일을 전송하는 중 에러가 발생했습니다.", email), INTERNAL_SERVER_EXCEPTION);
         }
         redisRepository.setDataExpire(authKey, email, AuthKeyExpiration);
         redisRepository.setDataExpire(email, "이메일 인증 신청", AuthEmailRequestWillExpireIn);
@@ -79,36 +83,43 @@ public class AuthService {
     public void completeAuthEmail(CompleteAuthEmailRequestDto request) {
 
         String email = redisRepository.getData(request.getAuthKey());
+
+        validateEmail(email);
+
         // 인증 이메일 전송 2번하는 경우에 대한 예외처리해야함
 
         try {
             if (!email.equals(request.getEmail())) { // 인증키로 가져온 이메일과 입력한 이메일이 다른 경우
-                throw new ValidationException("잘못된 이메일 입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
+                throw new MoneyBookException("잘못된 이메일 입니다.", VALIDATION_WRONG_EMAIL_PASSWORD_EXCEPTION);
             }
         } catch (NullPointerException e) { // 이메일에 해당하는 인증키가 없음
-            throw new ValidationException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
+            throw new MoneyBookException("잘못된 이메일 인증번호입니다.", VALIDATION_EMAIL_AUTH_KEY_EXCEPTION);
         }
         // 인증 완료 후 하루안에 회원가입해야함
         redisRepository.setDataExpire("EMAIL-AUTH:${" + email + "}", "이메일 인증 완료", AuthEmailRequestWillExpireIn);
     }
 
     public Member getMemberByEmail(String email) {
+
+        validateEmail(email);
+
         Optional<Member> optionalMember = memberRepository.findByEmail(email);
         if (optionalMember.isEmpty()) {
-            throw new NotFoundException("이메일에 해당하는 사용자가 없습니다.", NOT_FOUND_USER_EXCEPTION);
+            throw new MoneyBookException("이메일에 해당하는 사용자가 없습니다.", NOT_FOUND_USER_EXCEPTION);
         }
 
         return optionalMember.get();
     }
 
     public CreateMemberResponseDto createMember(CreateMemberRequestDto request) {
+
         String email = request.getEmail();
 
         validateEmail(email);
 
         // 인증 신청하지 않은 이메일인 경우
-        if(redisRepository.getData(email).isEmpty()) {
-            throw new ValidationException(
+        if(redisRepository.getData(email) == null) {
+            throw new MoneyBookException(
                     "이메일 인증 완료 후 회원가입 할 수 있습니다.",
                     UNAUTHORIZED_EMAIL_EXCEPTION
             );
@@ -116,7 +127,7 @@ public class AuthService {
 
         // 이메일 인증 신청했지만, 인증키를 입력하지 않은 경우
         if (redisRepository.getData(email).equals("이메일 인증 신청")) {
-            throw new ValidationException(
+            throw new MoneyBookException(
                     "인증키를 입력 해주세요.",
                     UNAUTHORIZED_AUTH_KEY_EXCEPTION
             );

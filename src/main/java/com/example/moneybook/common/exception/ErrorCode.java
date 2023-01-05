@@ -16,7 +16,7 @@ public enum ErrorCode {
     VALIDATION_REQUEST_MISSING_EXCEPTION(BAD_REQUEST, "필수적인 요청 값이 입력되지 않았습니다"),
     VALIDATION_WRONG_TYPE_EXCEPTION(BAD_REQUEST, "잘못된 타입이 입력되었습니다."),
     VALIDATION_SOCIAL_TYPE_EXCEPTION(BAD_REQUEST, "잘못된 소셜 프로바이더 입니다."),
-    VALIDATION_WRONG_EMAIL_PASSWORD_EXCEPTION(BAD_REQUEST, "잘못된 아이디 혹은 비밀번호입니다."),
+    VALIDATION_WRONG_EMAIL_PASSWORD_EXCEPTION(BAD_REQUEST, "잘못된 이메일 혹은 비밀번호입니다."),
     VALIDATION_EMAIL_AUTH_KEY_EXCEPTION(BAD_REQUEST, "잘못된 이메일 인증번호입니다."),
 
     // 401 UnAuthorized

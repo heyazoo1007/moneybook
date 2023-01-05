@@ -4,7 +4,7 @@ import com.example.moneybook.common.exception.ErrorCode;
 import lombok.Getter;
 
 @Getter
-public abstract class MoneyBookException extends RuntimeException {
+public class MoneyBookException extends RuntimeException {
 
     private final ErrorCode errorCode;
 

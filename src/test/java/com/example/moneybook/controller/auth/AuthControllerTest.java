@@ -10,6 +10,7 @@ import com.example.moneybook.controller.auth.dto.request.CreateMemberRequestDto;
 import com.example.moneybook.controller.auth.dto.request.LoginRequestDto;
 import com.example.moneybook.controller.auth.dto.request.ValidateEmailRequestDto;
 import com.example.moneybook.controller.auth.dto.response.CreateMemberResponseDto;
+import com.example.moneybook.controller.auth.dto.response.ValidateEmailResponseDto;
 import com.example.moneybook.doamin.member.Member;
 import com.example.moneybook.service.auth.AuthService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,7 +67,9 @@ class AuthControllerTest {
                 .build();
 
         given(authService.validateEmail(request.getEmail()))
-                .willReturn(true);
+                .willReturn(ValidateEmailResponseDto.builder()
+                        .email(request.getEmail())
+                        .build());
 
         // when
 
